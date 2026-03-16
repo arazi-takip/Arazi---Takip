@@ -466,3 +466,21 @@ def visit_pdf(visit_id: int, authorization: Optional[str] = Header(default=None)
         story += [t, Spacer(1,12), Paragraph("Gübreleme Programı", styles["Heading2"]), Paragraph((v.fertilization_text or "-").replace("\n","<br/>"), styles["BodyText"]), Spacer(1,8), Paragraph("İlaçlama Programı", styles["Heading2"]), Paragraph((v.spraying_text or "-").replace("\n","<br/>"), styles["BodyText"]), Spacer(1,8), Paragraph("Teşhis / Gözlem", styles["Heading2"]), Paragraph((v.diagnosis_notes or "-").replace("\n","<br/>"), styles["BodyText"])]
         doc.build(story); out.seek(0)
         return StreamingResponse(out, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename=\"ziyaret_{visit_id}.pdf\"'})
+
+
+
+# --- V4 EKLEMELERI ---
+class PasswordChange(BaseModel):
+    username: str
+    old_password: str
+    new_password: str
+
+@app.post("/change_password")
+def change_password(data: PasswordChange):
+    user = USERS.get(data.username)
+    if not user:
+        raise HTTPException(404,"user not found")
+    if user["password_hash"] != sha256(data.old_password):
+        raise HTTPException(403,"wrong password")
+    USERS[data.username]["password_hash"] = sha256(data.new_password)
+    return {"status":"ok"}
