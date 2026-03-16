@@ -1,0 +1,182 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Arazi Takip Güvenli Düzenle/Sil</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script async src="https://maps.googleapis.com/maps/api/js?key=__GOOGLE_MAPS_API_KEY__"></script>
+<style>
+body{font-family:Arial,sans-serif;margin:0;background:#f6f8fb}
+.top{padding:14px;background:#fff;border-bottom:1px solid #dde5ef}
+.section{padding:14px}
+.card{background:#fff;border:1px solid #dde5ef;border-radius:14px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}}
+button,input,select,textarea{padding:10px 12px;border-radius:10px;border:1px solid #cfd8e3;background:#fff}
+button{cursor:pointer}
+textarea{width:100%;min-height:90px}
+#map{height:55vh;border-radius:12px;overflow:hidden}
+#visitMap{height:240px;border-radius:12px;overflow:hidden}
+.hide{display:none}
+.statgrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}
+@media(max-width:900px){.statgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.stat{background:#fff;border:1px solid #dde5ef;border-radius:14px;padding:12px}
+.stat b{display:block;font-size:24px;margin-top:6px}
+.list-item{display:flex;justify-content:space-between;gap:10px;align-items:center;padding:10px;border:1px solid #e5ebf3;border-radius:12px;margin-bottom:8px}
+.small{font-size:13px;color:#5c6778}
+.tabs button{margin-right:6px}
+#photoList img{width:110px;height:90px;object-fit:cover;border-radius:10px;border:1px solid #d5dce6;margin:4px}
+</style>
+</head>
+<body>
+<div class="top"><h2>Arazi Takip Güvenli Düzenle / Sil</h2></div>
+
+<div id="loginWrap" class="section">
+  <div class="card">
+    <h3>Giriş</h3>
+    <div class="row">
+      <input id="username" value="muhendis1" placeholder="Kullanıcı">
+      <input id="password" value="1234" type="password" placeholder="Şifre">
+      <button onclick="login()">Giriş Yap</button>
+    </div>
+    <div id="loginMsg" class="small">Sadece mühendis1, mühendis2 ve ofis girebilir.</div>
+  </div>
+</div>
+
+<div id="appWrap" class="section hide">
+  <div class="card">
+    <div class="row"><b id="userInfo"></b><button onclick="logout()">Çıkış Yap</button></div>
+  </div>
+
+  <div class="card tabs">
+    <button onclick="showTab('dashboard')">Dashboard</button>
+    <button onclick="showTab('maptab')">Türkiye Haritası</button>
+    <button onclick="showTab('business')">İşletme / Sera</button>
+    <button onclick="showTab('visit')">Ziyaret</button>
+    <button onclick="showTab('reports')">Raporlar</button><button onclick="showTab('profile')">Profil</button>
+  </div>
+
+  <div id="dashboard" class="tab">
+    <div class="statgrid" id="stats"></div>
+    <div class="card"><h3>Son ziyaretler</h3><div id="recentVisits"></div></div>
+  </div>
+
+  <div id="maptab" class="tab hide">
+    <div class="card"><div id="map"></div></div>
+  </div>
+
+  <div id="business" class="tab hide">
+    <div class="grid">
+      <div class="card">
+        <h3>Yeni işletme</h3>
+        <div class="row"><input id="business_name" placeholder="İşletme adı"><input id="district" placeholder="İlçe"></div>
+        <div class="row"><input id="contact_name" placeholder="İlgili kişi"><input id="phone" placeholder="Telefon"></div>
+        <div><textarea id="business_notes" placeholder="Not"></textarea></div>
+        <div class="row"><button onclick="createBusiness()">İşletme kaydet</button></div>
+      </div>
+      <div class="card">
+        <h3>Yeni sera</h3>
+        <div class="row">
+          <select id="gh_business"></select>
+          <input id="gh_name" placeholder="Sera adı">
+          <input id="gh_crop" placeholder="Ürün">
+          <input id="gh_area" placeholder="Dekar">
+        </div>
+        <div class="row"><button onclick="useMyLocationForGreenhouse()">Mevcut konum</button><span id="ghPinText" class="small">Haritaya tıklayıp pin bırak veya mevcut konumu kullan</span></div>
+        <div class="row"><button onclick="saveGreenhouse()">Serayı kaydet</button></div>
+      </div>
+    </div>
+    <div class="card"><h3>İşletme ve Sera Listesi</h3><div id="greenhouseList"></div></div>
+    <div class="card"><h3>Sera ölçüm grafiği</h3><select id="analytics_greenhouse" onchange="loadAnalytics()"></select><canvas id="chart" height="120"></canvas></div>
+  </div>
+
+  <div id="visit" class="tab hide">
+    <div class="grid">
+      <div class="card">
+        <h3>Ziyaret başlat</h3>
+        <div class="row"><select id="visit_business" onchange="filterVisitGreenhouses()"></select><select id="visit_greenhouse"></select><input id="visit_mail" placeholder="Rapor mail"></div>
+        <div class="row"><button onclick="getLocation()">GPS konum al</button><button onclick="loadWeather()">Hava al</button><button onclick="startVisit()">Ziyaret başlat</button></div>
+        <div id="visitStatus" class="small"></div>
+        <div id="visitMap"></div>
+      </div>
+      <div class="card">
+        <h3>Ziyaret formu</h3>
+        <div class="row"><input id="phenology" placeholder="Fenolojik dönem"><input id="weatherTemp" placeholder="Hava °C"><input id="weatherHumidity" placeholder="Nem %"></div>
+        <div class="row"><input id="soilTemp" placeholder="Toprak sıcaklığı"><input id="soilMoisture" placeholder="Toprak nemi"><input id="soilEc" placeholder="Toprak EC"></div>
+        <div><textarea id="diagnosis" placeholder="Teşhis / gözlem"></textarea></div>
+        <div><textarea id="fertText">DEKARA&#10;5 kg 18-18-18&#10;3 kg MAP&#10;2 lt amino asit</textarea></div>
+        <div><textarea id="sprayText">100 lt suya&#10;300 ml ALGAMEK&#10;50 gr BİSECT</textarea></div>
+        <div class="row"><button onclick="saveVisit()">Ara kaydet</button><button onclick="completeVisit()">Ziyareti tamamla</button></div>
+      </div>
+    </div>
+    <div class="card"><h3>Fotoğraf yükleme</h3><div class="row"><input type="file" id="photo"><button onclick="uploadPhoto()">Fotoğraf yükle</button></div><div id="photoList"></div></div>
+  </div>
+
+  <div id="reports" class="tab hide">
+    <div class="card"><h3>Raporlar</h3><div class="row"><button onclick="downloadDailyExcel()">Günlük Excel indir</button></div><div id="reportVisits"></div></div>
+  </div>
+
+  <div id="profile" class="tab hide">
+    <div class="card">
+      <h3>Şifre Değiştir</h3>
+      <div class="row"><input id="current_password" type="password" placeholder="Mevcut şifre"><input id="new_password" type="password" placeholder="Yeni şifre"></div>
+      <div class="row"><button onclick="changePassword()">Şifreyi güncelle</button><span id="pwMsg" class="small"></span></div>
+    </div>
+  </div>
+</div>
+
+<div id="visitModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9999;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;max-width:760px;width:100%;border-radius:14px;padding:16px;max-height:85vh;overflow:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><h3 style="margin:0">Son Ziyaret</h3><button onclick="closeVisitModal()">Kapat</button></div>
+    <div id="visitModalBody"></div>
+  </div>
+</div>
+
+<script>
+let currentUser=null, token=localStorage.getItem('arazi_token')||'', ghPin=null, userLat=null, userLon=null, currentVisitId=null, map=null, chart=null, visitMap=null, mainMarkers=[], visitMarker=null, ghDraftMarker=null;
+function authHeaders(extra={}){ const h=Object.assign({},extra); if(token) h['Authorization']=`Bearer ${token}`; return h; }
+async function api(url, opts={}){ opts.headers=Object.assign({},authHeaders(opts.headers||{})); const r=await fetch(url,opts); const d=await r.json().catch(()=>({})); if(r.status===401){ localStorage.removeItem('arazi_token'); token=''; showLoggedOut(); throw new Error(d.detail||'Oturum gerekli'); } if(!r.ok) throw new Error(d.detail||'İşlem başarısız'); return d; }
+function mapIcon(color){ const fill={green:'2E7D32',orange:'F57C00',red:'C62828',gray:'9E9E9E',blue:'1E88E5'}[color]||'1E88E5'; return {url:`https://chart.googleapis.com/chart?chst=d_map_pin_icon&chld=home|${fill}`,scaledSize:new google.maps.Size(30,42)}; }
+function escapeHtml(s){ return (s||'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+function ensureGoogleMaps(){ if(!window.google || !window.google.maps) throw new Error('Google Maps yüklenemedi'); }
+function showLoggedOut(){ document.getElementById('loginWrap').classList.remove('hide'); document.getElementById('appWrap').classList.add('hide'); }
+function showLoggedIn(user){ currentUser=user; document.getElementById('userInfo').innerText=`${user.name} • ${user.role}`; document.getElementById('loginWrap').classList.add('hide'); document.getElementById('appWrap').classList.remove('hide'); }
+async function login(){ try{ const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:document.getElementById('username').value,password:document.getElementById('password').value})}); const d=await r.json().catch(()=>({})); if(!r.ok) throw new Error(d.detail||'Giriş başarısız'); token=d.token; localStorage.setItem('arazi_token',token); showLoggedIn(d.user); await loadAll(); }catch(e){ document.getElementById('loginMsg').innerText=e.message; } }
+async function logout(){ try{ await api('/api/logout',{method:'POST'});}catch(e){} localStorage.removeItem('arazi_token'); token=''; showLoggedOut(); }
+async function tryAutoLogin(){ if(!token) return; try{ const d=await api('/api/me'); showLoggedIn(d.user); await loadAll(); }catch(e){ showLoggedOut(); } }
+function showTab(id){ document.querySelectorAll('.tab').forEach(el=>el.classList.add('hide')); document.getElementById(id).classList.remove('hide'); if(id==='maptab') setTimeout(loadTurkeyMap,50); if(id==='visit') setTimeout(initVisitMap,50); }
+async function loadAll(){ await Promise.all([loadDashboard(), loadBusinesses(), loadTurkeyMap(), loadReports()]); }
+async function loadDashboard(){ const d=await api('/api/dashboard'); document.getElementById('stats').innerHTML=`<div class="stat">İşletme<b>${d.total_businesses}</b></div><div class="stat">Sera<b>${d.total_greenhouses}</b></div><div class="stat">Aktif ziyaret<b>${d.active_visits}</b></div><div class="stat">Bugün tamamlanan<b>${d.completed_today}</b></div><div class="stat">Kritik sera<b>${d.critical_greenhouses}</b></div>`; document.getElementById('recentVisits').innerHTML=(d.recent_visits||[]).map(v=>`<div class="list-item"><div><b>${v.business_name}</b> • ${v.greenhouse_name}<div class="small">${v.username} • ${v.visit_status} • ${v.visit_date}</div></div><div><button onclick="sendVisitWhatsapp(${v.id})">WhatsApp</button> <button onclick="downloadVisitPdf(${v.id})">PDF</button></div></div>`).join(''); }
+async function loadTurkeyMap(){ const data=await api('/api/greenhouses'); ensureGoogleMaps(); if(!map){ map=new google.maps.Map(document.getElementById('map'), {center:{lat:39,lng:35}, zoom:6, mapTypeControl:true, streetViewControl:false, fullscreenControl:true}); map.addListener('click', (e)=>{ ghPin={lat:e.latLng.lat(),lon:e.latLng.lng()}; document.getElementById('ghPinText').innerText=`Seçilen konum: ${ghPin.lat.toFixed(5)}, ${ghPin.lon.toFixed(5)}`; if(ghDraftMarker) ghDraftMarker.setMap(null); ghDraftMarker=new google.maps.Marker({position:{lat:ghPin.lat,lng:ghPin.lon}, map, icon:mapIcon('blue')}); showTab('business'); }); } mainMarkers.forEach(m=>m.setMap(null)); mainMarkers=[]; data.forEach(g=>{ const marker=new google.maps.Marker({position:{lat:g.lat,lng:g.lon}, map, icon:mapIcon(g.visit_color)}); const phoneDigits=(g.phone||'').replace(/\D/g,''); const phoneIntl=phoneDigits.startsWith('0') ? ('90'+phoneDigits.slice(1)) : phoneDigits; const info=new google.maps.InfoWindow({content:`<div style="min-width:240px"><b>${escapeHtml(g.business_name)}</b><br>${escapeHtml(g.greenhouse_name)}<br>${escapeHtml(g.crop_name||'-')} • ${g.area_decare||0} da<br><span style="font-size:12px;color:#666">${g.days_since_visit==null?'Hiç ziyaret yok':g.days_since_visit+' gün önce ziyaret'}</span><div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button onclick="showLatestVisit(${g.id})">Geçmiş Ziyaret</button><button onclick="openNav(${g.id}, 'google')">Konuma Git</button>${phoneIntl?`<button onclick="window.open('https://wa.me/${phoneIntl}','_blank')">WhatsApp</button><button onclick="window.open('sms:${phoneIntl}','_blank')">SMS</button>`:''}</div></div>`}); marker.addListener('click', ()=>info.open({anchor:marker,map})); mainMarkers.push(marker); }); }
+async async function loadBusinesses(){ const businesses=await api('/api/businesses'); const greenhouses=await api('/api/greenhouses'); window._allBusinesses=businesses; window._allGreenhouses=greenhouses; const opts=businesses.map(b=>`<option value="${b.id}">${b.business_name}</option>`).join(''); document.getElementById('gh_business').innerHTML=opts; document.getElementById('visit_business').innerHTML=opts; filterVisitGreenhouses(); const businessMap=Object.fromEntries(businesses.map(b=>[b.id,b])); const greenhouseHtml=greenhouses.map(g=>{ const b=businessMap[g.business_id]||{}; const digits=(b.phone||'').replace(/\D/g,''); const intl=digits.startsWith('0')?('90'+digits.slice(1)):digits; const visitText=g.days_since_visit==null?'Hiç ziyaret yok':`${g.days_since_visit} gün`; const colorDot=g.visit_color==='green'?'🟢':g.visit_color==='orange'?'🟠':g.visit_color==='red'?'🔴':'⚪'; return `<div class="list-item"><div><b>${g.business_name}</b> • ${g.greenhouse_name}<div class="small">${b.contact_name||'-'} • ${b.phone||'-'} • ${g.crop_name||'-'} • ${g.area_decare||0} da</div><div class="small">${colorDot} ${visitText}</div></div><div>${intl?`<button onclick="window.open('sms:${intl}','_blank')">SMS</button> <button onclick="window.open('https://wa.me/${intl}','_blank')">WhatsApp</button>`:''} <button onclick="openNav(${g.id}, 'google')">Konuma Git</button><button onclick="showLatestVisit(${g.id})">Geçmiş Ziyaretler</button> <button onclick="editGreenhouse(${g.id})">Düzelt</button><button onclick="deleteGreenhouse(${g.id})">Sil</button></div></div>`}).join(''); const businessHtml=businesses.map(b=>`<div class="list-item"><div><b>${b.business_name}</b><div class="small">${b.district||'-'} • ${b.contact_name||'-'} • ${b.phone||'-'}</div></div><div><button onclick="editBusiness(${b.id})">Düzelt</button><button onclick="deleteBusiness(${b.id})">Sil</button></div></div>`).join(''); document.getElementById('greenhouseList').innerHTML=`<h4>Çiftçi Kartları</h4>${greenhouseHtml}<h4>İşletmeler</h4>${businessHtml}`; document.getElementById('analytics_greenhouse').innerHTML=greenhouses.map(g=>`<option value="${g.id}">${g.business_name} - ${g.greenhouse_name}</option>`).join(''); loadAnalytics(); }function filterVisitGreenhouses(){ const bid=Number(document.getElementById('visit_business').value); const items=(window._allGreenhouses||[]).filter(g=>g.business_id===bid); document.getElementById('visit_greenhouse').innerHTML=items.map(g=>`<option value="${g.id}">${g.greenhouse_name}</option>`).join(''); initVisitMap(); }
+function confirmAction(title, lines=[]){ const message=[title, '', ...lines].join('\n'); return confirm(message); }
+async function createBusiness(){ const payload={business_name:document.getElementById('business_name').value.trim(),district:document.getElementById('district').value.trim(),contact_name:document.getElementById('contact_name').value.trim(),phone:document.getElementById('phone').value.trim(),notes:document.getElementById('business_notes').value.trim()}; if(!payload.business_name) return alert('İşletme adı zorunlu'); if(!confirmAction('İşletme kaydı oluşturulsun mu?',[`İşletme: ${payload.business_name}`,`İlçe: ${payload.district||'-'}`,`İlgili kişi: ${payload.contact_name||'-'}`,`Telefon: ${payload.phone||'-'}`,'','Bu işlem kayıt oluşturacaktır.'])) return; await api('/api/businesses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); await loadBusinesses(); alert('İşletme kaydedildi'); }
+function useMyLocationForGreenhouse(){ if(!navigator.geolocation) return alert('Konum desteği yok'); navigator.geolocation.getCurrentPosition(pos=>{ ghPin={lat:pos.coords.latitude,lon:pos.coords.longitude}; document.getElementById('ghPinText').innerText=`Seçilen konum: ${ghPin.lat.toFixed(5)}, ${ghPin.lon.toFixed(5)}`; ensureGoogleMaps(); if(map){ map.setCenter({lat:ghPin.lat,lng:ghPin.lon}); map.setZoom(15); if(ghDraftMarker) ghDraftMarker.setMap(null); ghDraftMarker=new google.maps.Marker({position:{lat:ghPin.lat,lng:ghPin.lon}, map, icon:mapIcon('blue')}); } },()=>alert('Konum alınamadı')); }
+async function saveGreenhouse(){ if(!ghPin) return alert('Önce haritada pin seç'); const businessId=Number(document.getElementById('gh_business').value); const business=(window._allBusinesses||[]).find(b=>b.id===businessId); const payload={business_id:businessId,greenhouse_name:document.getElementById('gh_name').value.trim(),crop_name:document.getElementById('gh_crop').value.trim(),area_decare:Number(document.getElementById('gh_area').value||0),map_lat:ghPin.lat,map_lon:ghPin.lon}; if(!payload.greenhouse_name) return alert('Sera adı zorunlu'); if(!confirmAction('Sera kaydı oluşturulsun mu?',[`İşletme: ${(business&&business.business_name)||'-'}`,`Sera: ${payload.greenhouse_name}`,`Ürün: ${payload.crop_name||'-'}`,`Alan: ${payload.area_decare||0} da`,`Konum: ${payload.map_lat.toFixed(5)}, ${payload.map_lon.toFixed(5)}`,'','Bu işlem kayıt oluşturacaktır.'])) return; await api('/api/greenhouses',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); ghPin=null; document.getElementById('ghPinText').innerText='Haritaya tıklayıp pin bırak veya mevcut konumu kullan'; await loadBusinesses(); await loadTurkeyMap(); alert('Sera kaydedildi'); }
+async function editBusiness(id){ const item=(window._allBusinesses||[]).find(x=>x.id===id); if(!item) return; const business_name=prompt('İşletme adı', item.business_name||''); if(business_name===null) return; const district=prompt('İlçe', item.district||'') ?? ''; const contact_name=prompt('İlgili kişi', item.contact_name||'') ?? ''; const phone=prompt('Telefon', item.phone||'') ?? ''; const notes=prompt('Not', item.notes||'') ?? ''; if(!confirmAction('İşletme değişiklikleri kaydedilsin mi?',[`İşletme: ${business_name||'-'}`,`İlçe: ${district||'-'}`,`İlgili kişi: ${contact_name||'-'}`,`Telefon: ${phone||'-'}`,'','Bu işlem mevcut kaydı güncelleyecektir.'])) return; await api(`/api/businesses/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({business_name,district,contact_name,phone,notes})}); await loadBusinesses(); await loadDashboard(); alert('İşletme güncellendi'); }
+async function deleteBusiness(id){ const item=(window._allBusinesses||[]).find(x=>x.id===id); if(!item) return; if(!confirmAction('İşletme kaydı silinsin mi?',[`İşletme: ${item.business_name||'-'}`,`İlçe: ${item.district||'-'}`,`İlgili kişi: ${item.contact_name||'-'}`,'','Bu işlem işletmeyi ve bağlı seraları kalıcı olarak silecektir.'])) return; await api(`/api/businesses/${id}`,{method:'DELETE'}); await loadBusinesses(); await loadDashboard(); await loadTurkeyMap(); alert('İşletme silindi'); }
+async function editGreenhouse(id){ const item=(window._allGreenhouses||[]).find(x=>x.id===id); if(!item) return; const greenhouse_name=prompt('Sera adı', item.greenhouse_name||''); if(greenhouse_name===null) return; const crop_name=prompt('Ürün', item.crop_name||'') ?? ''; const area_decare=prompt('Dekar', item.area_decare||'0'); const critical_flag=confirm('Bu sera kritik olarak işaretlensin mi?'); if(!confirmAction('Sera değişiklikleri kaydedilsin mi?',[`İşletme: ${item.business_name||'-'}`,`Sera: ${greenhouse_name||'-'}`,`Ürün: ${crop_name||'-'}`,`Alan: ${Number(area_decare||0)} da`,`Kritik durum: ${critical_flag?'Evet':'Hayır'}`,'','Bu işlem mevcut sera kaydını güncelleyecektir.'])) return; await api(`/api/greenhouses/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({greenhouse_name,crop_name,area_decare:Number(area_decare||0),critical_flag})}); await loadBusinesses(); await loadDashboard(); await loadTurkeyMap(); alert('Sera güncellendi'); }
+async function deleteGreenhouse(id){ const item=(window._allGreenhouses||[]).find(x=>x.id===id); if(!item) return; if(!confirmAction('Sera kaydı silinsin mi?',[`İşletme: ${item.business_name||'-'}`,`Sera: ${item.greenhouse_name||'-'}`,`Ürün: ${item.crop_name||'-'}`,'','Bu işlem serayı ve bağlı ziyaretleri kalıcı olarak silecektir.'])) return; await api(`/api/greenhouses/${id}`,{method:'DELETE'}); await loadBusinesses(); await loadDashboard(); await loadTurkeyMap(); alert('Sera silindi'); }
+function initVisitMap(){ const gid=Number(document.getElementById('visit_greenhouse')?.value||0); const g=(window._allGreenhouses||[]).find(x=>x.id===gid); if(!g) return; ensureGoogleMaps(); if(!visitMap){ visitMap=new google.maps.Map(document.getElementById('visitMap'), {center:{lat:g.lat,lng:g.lon}, zoom:14, mapTypeControl:true, streetViewControl:false}); } visitMap.setCenter({lat:g.lat,lng:g.lon}); if(visitMarker) visitMarker.setMap(null); visitMarker=new google.maps.Marker({position:{lat:g.lat,lng:g.lon}, map:visitMap, icon:mapIcon(g.visit_color)}); }
+function getLocation(){ if(!navigator.geolocation) return alert('Konum desteği yok'); navigator.geolocation.getCurrentPosition(pos=>{ userLat=pos.coords.latitude; userLon=pos.coords.longitude; document.getElementById('visitStatus').innerText=`GPS alındı: ${userLat.toFixed(5)}, ${userLon.toFixed(5)}`; ensureGoogleMaps(); if(visitMap){ visitMap.setCenter({lat:userLat,lng:userLon}); if(currentLocationMarker) currentLocationMarker.setMap(null); currentLocationMarker=new google.maps.Marker({position:{lat:userLat,lng:userLon}, map:visitMap, title:'Mevcut konum'}); } },()=>alert('Konum alınamadı')); }
+async function loadWeather(){ if(userLat==null) return alert('Önce GPS konum al'); const w=await api(`/api/weather?lat=${userLat}&lon=${userLon}`); document.getElementById('weatherTemp').value=w.temperature?`${w.temperature}°C`:''; document.getElementById('weatherHumidity').value=w.humidity?`%${w.humidity}`:''; }
+async function startVisit(){ const res=await api('/api/visits/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({business_id:Number(document.getElementById('visit_business').value),greenhouse_id:Number(document.getElementById('visit_greenhouse').value),recipient_email:document.getElementById('visit_mail').value,visit_lat:userLat,visit_lon:userLon})}); currentVisitId=res.id; document.getElementById('visitStatus').innerText=`Ziyaret başlatıldı. ID: ${currentVisitId}`; await loadDashboard(); await loadBusinesses(); await loadTurkeyMap(); }
+async function saveVisit(){ if(!currentVisitId) return alert('Önce ziyareti başlat'); await api(`/api/visits/${currentVisitId}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({soil_temp:document.getElementById('soilTemp').value,soil_moisture:document.getElementById('soilMoisture').value,soil_ec:document.getElementById('soilEc').value,phenology_stage:document.getElementById('phenology').value,diagnosis_notes:document.getElementById('diagnosis').value,fertilization_text:document.getElementById('fertText').value,spraying_text:document.getElementById('sprayText').value,weather_temp:document.getElementById('weatherTemp').value,weather_humidity:document.getElementById('weatherHumidity').value,visit_lat:userLat,visit_lon:userLon})}); document.getElementById('visitStatus').innerText='Ziyaret bilgileri kaydedildi'; await loadDashboard(); loadAnalytics(); }
+async function completeVisit(){ if(!currentVisitId) return alert('Önce ziyareti başlat'); await saveVisit(); await api(`/api/visits/${currentVisitId}/complete`,{method:'POST'}); document.getElementById('visitStatus').innerText='Ziyaret tamamlandı'; await loadDashboard(); await loadBusinesses(); await loadTurkeyMap(); await loadReports(); }
+async function sendVisitWhatsapp(id){ const d=await api(`/api/visits/${id}/whatsapp-text`); if(!d.wa_url) return alert('Bu işletme için telefon numarası yok'); window.open(d.wa_url,'_blank'); }
+async function changePassword(){ try{ await api('/api/change-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({current_password:document.getElementById('current_password').value,new_password:document.getElementById('new_password').value})}); document.getElementById('pwMsg').innerText='Şifre güncellendi'; document.getElementById('current_password').value=''; document.getElementById('new_password').value=''; }catch(e){ document.getElementById('pwMsg').innerText=e.message; } }
+async function uploadPhoto(){ if(!currentVisitId) return alert('Önce ziyareti başlat'); const f=document.getElementById('photo').files[0]; if(!f) return alert('Fotoğraf seç'); const fd=new FormData(); fd.append('file',f); const r=await fetch(`/api/visits/${currentVisitId}/photos`,{method:'POST',headers:authHeaders(),body:fd}); const d=await r.json(); if(!r.ok) return alert(d.detail||'Yükleme başarısız'); const img=document.createElement('img'); img.src=d.url; document.getElementById('photoList').appendChild(img); }
+async function loadAnalytics(){ const gid=document.getElementById('analytics_greenhouse')?.value; if(!gid) return; const d=await api(`/api/analytics/greenhouse/${gid}`); const ctx=document.getElementById('chart'); if(chart) chart.destroy(); chart=new Chart(ctx,{type:'line',data:{labels:d.labels,datasets:[{label:'Toprak EC',data:d.soil_ec},{label:'Toprak Nemi',data:d.soil_moisture},{label:'Toprak Sıcaklığı',data:d.soil_temp}]}}); }
+async function loadReports(){ const d=await api('/api/dashboard'); document.getElementById('reportVisits').innerHTML=(d.recent_visits||[]).map(v=>`<div class="list-item"><div><b>${v.business_name}</b> • ${v.greenhouse_name}<div class="small">${v.username} • ${v.visit_status}</div></div><div><button onclick="sendVisitWhatsapp(${v.id})">Metin Raporu WhatsApp</button> <button onclick="downloadVisitPdf(${v.id})">PDF</button></div></div>`).join(''); }
+async function openNav(id,kind){ const l=await api(`/api/greenhouses/${id}/navigation`); window.open(kind==='apple'?l.apple_maps:l.google_maps,'_blank'); }
+async function showLatestVisit(greenhouseId){ const d=await api(`/api/greenhouses/${greenhouseId}/latest-visit`); const modal=document.getElementById('visitModal'); const body=document.getElementById('visitModalBody'); if(!d.has_visit){ body.innerHTML='<div class="small">Bu seraya ait kayıtlı ziyaret yok.</div>'; } else { body.innerHTML=`<div class="list-item"><div><b>Tarih</b><div class="small">${d.visit_date}</div></div><div><b>Mühendis</b><div class="small">${d.username||'-'}</div></div><div><b>Durum</b><div class="small">${d.visit_status||'-'}</div></div></div><div class="card"><b>Hava</b><div class="small">${d.weather_temp||'-'} / ${d.weather_humidity||'-'}</div></div><div class="card"><b>Toprak</b><div class="small">Sıcaklık: ${d.soil_temp||'-'}<br>Nemi: ${d.soil_moisture||'-'}<br>EC: ${d.soil_ec||'-'}</div></div><div class="card"><b>Teşhis / Gözlem</b><div class="small">${(d.diagnosis_notes||'-').replaceAll('\\n','<br>')}</div></div><div class="card"><b>Gübreleme</b><div class="small">${(d.fertilization_text||'-').replaceAll('\\n','<br>')}</div></div><div class="card"><b>İlaçlama</b><div class="small">${(d.spraying_text||'-').replaceAll('\\n','<br>')}</div></div>`; } modal.style.display='flex'; }
+function closeVisitModal(){ document.getElementById('visitModal').style.display='none'; }
+function downloadVisitPdf(id){ fetch(`/api/reports/visit/${id}/pdf`,{headers:authHeaders()}).then(r=>r.blob()).then(b=>{ const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download=`ziyaret_${id}.pdf`; a.click(); URL.revokeObjectURL(u); }); }
+function downloadDailyExcel(){ fetch('/api/reports/daily/excel',{headers:authHeaders()}).then(r=>r.blob()).then(b=>{ const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='gunluk_rapor.xlsx'; a.click(); URL.revokeObjectURL(u); }); }
+tryAutoLogin();
+</script>
+</body>
+</html>

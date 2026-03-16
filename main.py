@@ -2,6 +2,8 @@
 from __future__ import annotations
 import hashlib
 import io
+import json
+import os
 import secrets
 from datetime import date, datetime
 from pathlib import Path
@@ -42,12 +44,28 @@ app.add_middleware(
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-USERS = {
+USERS_FILE = APP_DIR / "users.json"
+DEFAULT_USERS = {
     "muhendis1": {"password_hash": sha256("1234"), "name": "Mühendis 1", "role": "engineer"},
     "muhendis2": {"password_hash": sha256("1234"), "name": "Mühendis 2", "role": "engineer"},
     "ofis": {"password_hash": sha256("1234"), "name": "Ofis", "role": "office"},
 }
+
+def load_users() -> dict:
+    if USERS_FILE.exists():
+        try:
+            return json.loads(USERS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    USERS_FILE.write_text(json.dumps(DEFAULT_USERS, ensure_ascii=False, indent=2), encoding="utf-8")
+    return DEFAULT_USERS.copy()
+
+def save_users(users: dict) -> None:
+    USERS_FILE.write_text(json.dumps(users, ensure_ascii=False, indent=2), encoding="utf-8")
+
+USERS = load_users()
 SESSIONS: dict[str, dict] = {}
+GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
 
 class Base(DeclarativeBase):
     pass
@@ -179,9 +197,14 @@ class VisitUpdateIn(BaseModel):
     visit_lat: Optional[float] = None
     visit_lon: Optional[float] = None
 
+class ChangePasswordIn(BaseModel):
+    current_password: str
+    new_password: str
+
 @app.get("/", response_class=HTMLResponse)
 def root():
-    return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    html = (STATIC_DIR / "index.html").read_text(encoding="utf-8")
+    return html.replace("__GOOGLE_MAPS_API_KEY__", GOOGLE_MAPS_API_KEY)
 
 app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
@@ -205,6 +228,19 @@ def logout(authorization: Optional[str] = Header(default=None)):
 @app.get("/api/me")
 def me(authorization: Optional[str] = Header(default=None)):
     return {"user": require_user(authorization)}
+
+@app.post("/api/change-password")
+def change_password(data: ChangePasswordIn, authorization: Optional[str] = Header(default=None)):
+    user = require_user(authorization)
+    username = user["username"]
+    row = USERS.get(username)
+    if not row or row.get("password_hash") != sha256(data.current_password):
+        raise HTTPException(status_code=400, detail="Mevcut şifre yanlış")
+    if len(data.new_password or "") < 4:
+        raise HTTPException(status_code=400, detail="Yeni şifre en az 4 karakter olmalı")
+    USERS[username]["password_hash"] = sha256(data.new_password)
+    save_users(USERS)
+    return {"ok": True}
 
 @app.get("/api/businesses")
 def list_businesses(authorization: Optional[str] = Header(default=None)):
@@ -260,19 +296,42 @@ def list_greenhouses(authorization: Optional[str] = Header(default=None)):
     require_user(authorization)
     with SessionLocal() as db:
         rows = db.scalars(select(Greenhouse).order_by(Greenhouse.id.desc())).all()
-        businesses = {b.id: b.business_name for b in db.scalars(select(Business)).all()}
-        return [{
-            "id": g.id,
-            "business_id": g.business_id,
-            "business_name": businesses.get(g.business_id, ""),
-            "greenhouse_name": g.greenhouse_name,
-            "crop_name": g.crop_name,
-            "area_decare": g.area_decare,
-            "lat": g.map_lat,
-            "lon": g.map_lon,
-            "status": {"blue":"registered","orange":"visited","green":"active","red":"critical"}.get(g.status_color, "registered"),
-            "critical_flag": g.critical_flag
-        } for g in rows]
+        businesses = {b.id: b for b in db.scalars(select(Business)).all()}
+        today = datetime.utcnow().date()
+        result = []
+        for g in rows:
+            business = businesses.get(g.business_id)
+            days_since_visit = None
+            visit_color = "gray"
+            if g.last_visit_at:
+                days_since_visit = (today - g.last_visit_at.date()).days
+                if days_since_visit <= 6:
+                    visit_color = "green"
+                elif days_since_visit <= 14:
+                    visit_color = "orange"
+                else:
+                    visit_color = "red"
+            if g.critical_flag:
+                visit_color = "red"
+            result.append({
+                "id": g.id,
+                "business_id": g.business_id,
+                "business_name": business.business_name if business else "",
+                "contact_name": business.contact_name if business else "",
+                "phone": business.phone if business else "",
+                "district": business.district if business else "",
+                "notes": business.notes if business else "",
+                "greenhouse_name": g.greenhouse_name,
+                "crop_name": g.crop_name,
+                "area_decare": g.area_decare,
+                "lat": g.map_lat,
+                "lon": g.map_lon,
+                "critical_flag": g.critical_flag,
+                "days_since_visit": days_since_visit,
+                "last_visit_at": g.last_visit_at.isoformat() if g.last_visit_at else None,
+                "visit_color": visit_color
+            })
+        return result
 
 @app.post("/api/greenhouses")
 def create_greenhouse(data: GreenhouseIn, authorization: Optional[str] = Header(default=None)):
@@ -412,6 +471,51 @@ def upload_photo(visit_id: int, file: UploadFile = File(...), authorization: Opt
         db.add(p); db.commit(); db.refresh(p)
         return {"id": p.id, "url": p.file_path}
 
+@app.get("/api/visits/{visit_id}/whatsapp-text")
+def visit_whatsapp_text(visit_id: int, authorization: Optional[str] = Header(default=None)):
+    require_user(authorization)
+    with SessionLocal() as db:
+        v = db.get(Visit, visit_id)
+        if not v:
+            raise HTTPException(status_code=404, detail="Ziyaret bulunamadı")
+        business = db.get(Business, v.business_id)
+        greenhouse = db.get(Greenhouse, v.greenhouse_id)
+        photo = db.scalars(select(VisitPhoto).where(VisitPhoto.visit_id == v.id).order_by(VisitPhoto.id.desc()).limit(1)).first()
+        greeting_name = business.contact_name if business and business.contact_name else None
+        lines = [
+            "Gencerler Tarım",
+            "Sera Ziyaret Bilgilendirmesi",
+            "",
+            f"Merhaba {greeting_name}," if greeting_name else "Merhaba,",
+            "",
+            f"{v.visit_date} tarihinde yapılan saha ziyaretine ait bilgiler aşağıdadır.",
+            "",
+            f"İşletme: {business.business_name if business else ''}",
+            f"Ürün: {greenhouse.crop_name if greenhouse and greenhouse.crop_name else '-'}",
+            f"Sera: {greenhouse.greenhouse_name if greenhouse else ''}",
+            f"Ziyareti yapan: {v.username}",
+            "",
+            "Gözlem:",
+            v.diagnosis_notes or "-",
+            "",
+            "Gübreleme Tavsiyesi:",
+            v.fertilization_text or "-",
+            "",
+            "İlaçlama Tavsiyesi:",
+            v.spraying_text or "-",
+        ]
+        if photo:
+            lines += ["", f"Fotoğraf: {photo.file_path}"]
+        lines += ["", "İyi çalışmalar dileriz.", "Gencerler Tarım"]
+        text_message = "\n".join(lines)
+        phone = (business.phone or "") if business else ""
+        phone_digits = "".join(ch for ch in phone if ch.isdigit())
+        if phone_digits.startswith("0"):
+            phone_digits = "90" + phone_digits[1:]
+        wa_url = f"https://wa.me/{phone_digits}?text={requests.utils.quote(text_message)}" if phone_digits else ""
+        sms_url = f"sms:{phone_digits}?body={requests.utils.quote(text_message)}" if phone_digits else ""
+        return {"text": text_message, "wa_url": wa_url, "sms_url": sms_url}
+
 @app.get("/api/dashboard")
 def dashboard(authorization: Optional[str] = Header(default=None)):
     require_user(authorization)
@@ -466,21 +570,3 @@ def visit_pdf(visit_id: int, authorization: Optional[str] = Header(default=None)
         story += [t, Spacer(1,12), Paragraph("Gübreleme Programı", styles["Heading2"]), Paragraph((v.fertilization_text or "-").replace("\n","<br/>"), styles["BodyText"]), Spacer(1,8), Paragraph("İlaçlama Programı", styles["Heading2"]), Paragraph((v.spraying_text or "-").replace("\n","<br/>"), styles["BodyText"]), Spacer(1,8), Paragraph("Teşhis / Gözlem", styles["Heading2"]), Paragraph((v.diagnosis_notes or "-").replace("\n","<br/>"), styles["BodyText"])]
         doc.build(story); out.seek(0)
         return StreamingResponse(out, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename=\"ziyaret_{visit_id}.pdf\"'})
-
-
-
-# --- V4 EKLEMELERI ---
-class PasswordChange(BaseModel):
-    username: str
-    old_password: str
-    new_password: str
-
-@app.post("/change_password")
-def change_password(data: PasswordChange):
-    user = USERS.get(data.username)
-    if not user:
-        raise HTTPException(404,"user not found")
-    if user["password_hash"] != sha256(data.old_password):
-        raise HTTPException(403,"wrong password")
-    USERS[data.username]["password_hash"] = sha256(data.new_password)
-    return {"status":"ok"}
